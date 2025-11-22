@@ -3,3 +3,17 @@
 ################################################################################
 
 /.vs
+/src/FileProcessing.API/bin/Debug/net8.0
+/src/FileProcessing.Application/bin/Debug/net8.0
+/src/FileProcessing.API/obj
+/src/FileProcessing.API/logs
+/src/FileProcessing.Application/obj
+/src/FileProcessing.Domain/bin/Debug/net8.0
+/src/FileProcessing.Infrastructure/bin/Debug/net8.0
+/src/FileProcessing.Infrastructure/obj
+/src/FileProcessing.Shared/bin/Debug/net8.0
+/src/FileProcessing.Shared/obj/Debug/net8.0
+/src/FileProcessing.Shared/obj
+/src/FileProcessing.Worker/bin/Debug/net8.0
+/src/FileProcessing.Worker/obj
+/src/FileProcessing.Domain/obj
