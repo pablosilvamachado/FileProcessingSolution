@@ -10,6 +10,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
+using FileProcessing.API.Services;
+using FileProcessing.API.Configurations;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -28,14 +30,11 @@ builder.Host.UseSerilog();
 // ---------------------------
 // DbContext (Postgres)
 // ---------------------------
-// Ensure your infra project defines FileProcessingDbContext with migrations assembly if needed
 builder.Services.AddDbContext<FileProcessingDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default"),
         npgsqlOptions => npgsqlOptions.MigrationsAssembly("FileProcessing.Infrastructure")));
 
-// ---------------------------
-// DI - Repositories, Storage, Producer wrapper
-// ---------------------------
+
 builder.Services.AddScoped<IFileRecordRepository, FileRecordRepository>();
 builder.Services.AddSingleton<IFileStorageService, LocalFileStorageService>();
 builder.Services.AddScoped<IMessageProducerService, MessageProducerService>();
@@ -52,7 +51,6 @@ builder.Services.AddMassTransit(x =>
         var user = builder.Configuration["RabbitMQ:Username"] ?? builder.Configuration["RabbitMQ:User"] ?? "guest";
         var pass = builder.Configuration["RabbitMQ:Password"] ?? builder.Configuration["RabbitMQ:Pass"] ?? "guest";
 
-        // configure host (use slash "/" vhost)
         cfg.Host(host, "/", h =>
         {
             h.Username(user);
@@ -64,25 +62,43 @@ builder.Services.AddMassTransit(x =>
 // ---------------------------
 // Authentication (JWT)
 // ---------------------------
-// Ensure Jwt:Key exists in configuration (appsettings)
-var jwtKey = builder.Configuration["Jwt:Key"] ?? "change-this-secret-in-dev";
-var keyBytes = Encoding.UTF8.GetBytes(jwtKey);
+// bind TokenOptions
+builder.Services.Configure<TokenOptions>(builder.Configuration.GetSection("Jwt"));
+var tokenOptions = builder.Configuration.GetSection("Jwt").Get<TokenOptions>();
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+// register TokenService
+builder.Services.AddSingleton<ITokenService, TokenService>();
+
+// Authentication
+var key = Encoding.UTF8.GetBytes(tokenOptions.Key);
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.RequireHttpsMetadata = false; // true em produção
+    options.SaveToken = true;
+    options.TokenValidationParameters = new TokenValidationParameters
     {
-        options.RequireHttpsMetadata = false;
-        options.SaveToken = true;
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = false,
-            ValidateAudience = false,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(keyBytes)
-        };
-    });
+        ValidateIssuer = true,
+        ValidIssuer = tokenOptions.Issuer,
+        ValidateAudience = true,
+        ValidAudience = tokenOptions.Audience,
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new SymmetricSecurityKey(key),
+        ValidateLifetime = true,
+        ClockSkew = TimeSpan.FromSeconds(30)
+    };
+});
 
+// Authorization (policies example)
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("MustBeUser", policy => policy.RequireRole("User"));
+});
 
 builder.Services.AddHealthChecks()
     .AddNpgSql(builder.Configuration.GetConnectionString("Default") ?? string.Empty, name: "postgres")
@@ -117,9 +133,6 @@ if (app.Environment.IsDevelopment())
     }
 }
 
-// ---------------------------
-// Middleware pipeline
-// ---------------------------
 app.UseSerilogRequestLogging();
 
 if (app.Environment.IsDevelopment())

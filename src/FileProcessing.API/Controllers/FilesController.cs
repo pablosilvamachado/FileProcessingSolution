@@ -10,6 +10,7 @@ namespace FileProcessing.Api.Controllers;
 
 [ApiController]
 [Route("api/files")]
+[Authorize]
 public class FilesController : ControllerBase
 {
     private readonly IFileRecordRepository _repo;
