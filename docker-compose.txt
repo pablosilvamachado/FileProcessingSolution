@@ -4,8 +4,8 @@ services:
 
   api:
     build:
-      context: ./src
-      dockerfile: FileProcessing.API/Dockerfile
+      context: .
+      dockerfile: ./src/FileProcessing.API/Dockerfile
     container_name: fileprocessing_api
     depends_on:
       - postgres
@@ -31,11 +31,11 @@ services:
 
     volumes:
       - ./uploads:/app/uploads
-      - ./docker/init/03-create-log-folders.sh:/docker-entrypoint-initdb.d
+
   worker:
     build:
-      context: ./src
-      dockerfile: FileProcessing.Worker/Dockerfile
+      context: .
+      dockerfile: ./src/FileProcessing.Worker/Dockerfile
     container_name: fileprocessing_worker
     depends_on:
       - postgres
@@ -67,7 +67,6 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./docker/init:/docker-entrypoint-initdb.d 
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
@@ -92,10 +91,10 @@ services:
 
   seq:
     image: datalust/seq:latest
-    container_name: seq
-    restart: unless-stopped
+    container_name: fileprocessing_seq
+    restart: always
     environment:
-      - ACCEPT_EULA=Y
+      ACCEPT_EULA: "Y"
     ports:
       - "5341:80"
     volumes:

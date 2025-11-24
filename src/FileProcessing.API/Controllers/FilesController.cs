@@ -5,6 +5,7 @@ using FileProcessing.Application.Interfaces;
 using FileProcessing.Api.DTOs;
 using FileProcessing.Domain.Entities;
 using FileProcessing.Infrastructure.Messaging;
+using Serilog;
 
 namespace FileProcessing.Api.Controllers;
 
@@ -26,17 +27,17 @@ public class FilesController : ControllerBase
 
     [HttpPost("upload")]
     [Authorize]
-    public async Task<IActionResult> Upload()
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> Upload([FromForm] IFormFile file)
     {
-        var file = Request.Form.Files.FirstOrDefault();
         if (file == null) return BadRequest("file missing");
 
-        // Basic validations (can be read from config)
         var maxSize = 50 * 1024 * 1024; // 50MB
-        if (file.Length > maxSize) return BadRequest("file too large");
+        if (file.Length > maxSize)
+            return BadRequest("file too large");
 
         var fileId = Guid.NewGuid();
-        var tempFileName = fileId.ToString() + Path.GetExtension(file.FileName);
+        var tempFileName = fileId + Path.GetExtension(file.FileName);
 
         using var stream = file.OpenReadStream();
         var tempPath = await _storage.UploadTempAsync(stream, tempFileName);
@@ -48,11 +49,13 @@ public class FilesController : ControllerBase
             new FileInfoDto(fileId, file.FileName, file.ContentType, file.Length, tempPath),
             new MetaDto(User?.Identity?.Name ?? "anonymous", 0));
 
+        Log.Information("Publicando a mensagem na fila " + msg);
         await _producer.PublishFileUploadedAsync(msg);
-
+        Log.Information("Publicado a mensagem na fila...");
         return Accepted(new FileUploadedResponse(fileId));
     }
 
+    [Authorize]
     [HttpGet("{id}")]
     public async Task<IActionResult> Get(Guid id)
     {

@@ -32,7 +32,6 @@ public class FileUploadedConsumer : IConsumer<FileUploadedMessage>
         var msg = context.Message;
         var fileId = msg.File.FileId;
 
-        // Idempotency: try to mark as Processing
         var locked = await _repo.TryMarkProcessingAsync(fileId);
         if (!locked)
         {
@@ -45,7 +44,6 @@ public class FileUploadedConsumer : IConsumer<FileUploadedMessage>
             await _retryPolicy.ExecuteAsync(async () =>
             {
                 using var stream = await _storage.DownloadTempAsync(msg.File.TempPath);
-                // Validate size/type here if needed
                 var finalPath = await _storage.MoveTempToFinalAsync(msg.File.TempPath, fileId.ToString());
                 var entity = await _repo.GetAsync(fileId);
                 if (entity == null) throw new InvalidOperationException("File meta missing");
@@ -67,10 +65,6 @@ public class FileUploadedConsumer : IConsumer<FileUploadedMessage>
                 await _repo.UpdateAsync(entity);
             }
 
-            // Optionally publish to retry queue manually:
-            // await context.Publish(context.Message, sendCtx => sendCtx.DestinationAddress = new Uri("exchange:upload_queue_retry"));
-
-            // Rethrow so MassTransit/RabbitMQ handles retry and DLQ
             throw;
         }
     }

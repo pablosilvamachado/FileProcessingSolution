@@ -1,6 +1,7 @@
 ﻿using System.Security.Claims;
 using FileProcessing.API.Services;
 using Microsoft.AspNetCore.Mvc;
+using Serilog;
 
 namespace FileProcessing.API.Controllers;
 
@@ -27,7 +28,7 @@ public class AuthController : ControllerBase
                 new Claim(ClaimTypes.NameIdentifier, req.Username),
                 new Claim(ClaimTypes.Role, "User")
             };
-
+            Log.Information("Login Realizado por : " + req.Username );
             var token = _tokenService.GenerateToken(req.Username, claims);
             return Ok(new { access_token = token, token_type = "Bearer" });
         }
