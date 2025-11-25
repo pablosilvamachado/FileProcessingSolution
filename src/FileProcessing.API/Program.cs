@@ -52,6 +52,8 @@ builder.Services.AddMassTransit(x =>
     });
 });
 
+builder.Services.AddMassTransitHostedService();
+
 // ---------------------------
 // JWT Authentication
 // ---------------------------
