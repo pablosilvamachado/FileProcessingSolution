@@ -17,3 +17,4 @@
 /src/FileProcessing.Worker/bin/Debug/net8.0
 /src/FileProcessing.Worker/obj
 /src/FileProcessing.Domain/obj
+/src/FileProcessing.Contracts/obj
