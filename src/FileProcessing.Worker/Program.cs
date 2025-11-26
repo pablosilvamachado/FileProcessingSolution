@@ -5,66 +5,79 @@ using FileProcessing.Infrastructure.Storage;
 using FileProcessing.Worker.Consumers;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
+using RabbitMQ.Client;
 using Serilog;
-using Serilog.Context;
 
-try
+var builder = Host.CreateApplicationBuilder(args);
+
+// Logging
+builder.Services.AddSerilog((ctx, cfg) =>
+    cfg.ReadFrom.Configuration(builder.Configuration));
+
+// Database
+builder.Services.AddDbContext<FileProcessingDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// Repositories
+builder.Services.AddScoped<IFileRecordRepository, FileRecordRepository>();
+builder.Services.AddScoped<IProcessedMessageRepository, ProcessedMessageRepository>();
+builder.Services.AddSingleton<IFileStorageService, LocalFileStorageService>();
+
+// MassTransit + RabbitMQ
+builder.Services.AddMassTransit(x =>
 {
-    Log.Logger = new LoggerConfiguration()
-        .ReadFrom.Configuration(new ConfigurationBuilder().AddJsonFile("appsettings.json").Build())
-        .Enrich.FromLogContext()
-        .Enrich.WithProperty("Application", "FileProcessingWorker")
-        .CreateLogger();
+    x.AddConsumer<FileUploadedConsumer>();
 
-    Log.Information("Starting Worker...");
+    x.UsingRabbitMq((ctx, cfg) =>
+    {
+        var rabbit = builder.Configuration.GetSection("RabbitMQ");
 
-    var host = Host.CreateDefaultBuilder(args)
-        .UseSerilog()
-        .ConfigureServices((context, services) =>
+        cfg.Host(rabbit["Host"], "/", h =>
         {
-            // Database
-            services.AddDbContext<FileProcessingDbContext>(options =>
-                options.UseNpgsql(context.Configuration.GetConnectionString("DefaultConnection")));
+            h.Username(rabbit["Username"]);
+            h.Password(rabbit["Password"]);
+        });
 
-            // Repositórios e serviços
-            services.AddScoped<IFileRecordRepository, FileRecordRepository>();
-            services.AddScoped<IProcessedMessageRepository, ProcessedMessageRepository>();
-            services.AddSingleton<IFileStorageService, LocalFileStorageService>();
+        cfg.ReceiveEndpoint("upload_queue", e =>
+        {
+            e.ConfigureConsumer<FileUploadedConsumer>(ctx);
 
-            // MassTransit
-            var rabbit = context.Configuration.GetSection("RabbitMQ");
-            services.AddMassTransit(x =>
+            e.PrefetchCount = 16;
+
+            // Retry lógico (não usa fila)
+            e.UseMessageRetry(r =>
             {
-                x.AddConsumer<FileUploadedConsumer>();
-                x.UsingRabbitMq((ctx, cfg) =>
-                {
-                    cfg.Host(rabbit["Host"], "/", h =>
-                    {
-                        h.Username(rabbit["Username"]);
-                        h.Password(rabbit["Password"]);
-                    });
-
-                    cfg.ReceiveEndpoint("upload_queue", e =>
-                    {
-                        e.ConfigureConsumer<FileUploadedConsumer>(ctx);
-                        e.PrefetchCount = 16;
-                        e.UseMessageRetry(r => r.Interval(3, TimeSpan.FromSeconds(5)));
-                        e.DiscardFaultedMessages();
-                    });
-                });
+                r.Immediate(3);
             });
 
-            services.AddMassTransitHostedService();
-        })
-        .Build();
+            // Redelivery usando FILA "_retry"
+            e.UseDelayedRedelivery(r =>
+            {
+                r.Intervals(
+                    TimeSpan.FromSeconds(10),
+                    TimeSpan.FromSeconds(30),
+                    TimeSpan.FromSeconds(60)
+                );
+            });
 
-    await host.RunAsync();
-}
-catch (Exception ex)
-{
-    Log.Fatal(ex, "Worker crashed");
-}
-finally
-{
-    Log.CloseAndFlush();
-}
+            // Importante!
+            e.UseInMemoryOutbox();
+        });
+    });
+});
+
+// Health Checks
+builder.Services.AddHealthChecks()
+    .AddNpgSql(builder.Configuration.GetConnectionString("DefaultConnection"), name: "postgres")
+    .AddRabbitMQ(
+        sp =>
+        {
+            var uri = builder.Configuration["RabbitMQ:Connection"];
+            var factory = new ConnectionFactory { Uri = new Uri(uri) };
+            return factory.CreateConnectionAsync(CancellationToken.None);
+        },
+        name: "rabbitmq");
+
+// Build and run Worker
+var host = builder.Build();
+await host.RunAsync();

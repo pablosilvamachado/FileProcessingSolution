@@ -40,9 +40,24 @@ namespace FileProcessing.Infrastructure.Storage
         public Task<string> MoveTempToFinalAsync(string tempPath, string finalFileName, CancellationToken cancellationToken = default)
         {
             var finalPath = Path.Combine(_baseFinal, finalFileName + Path.GetExtension(tempPath));
-            if (File.Exists(finalPath)) return Task.FromResult(finalPath); // idempotency
+            if (File.Exists(finalPath)) return Task.FromResult(finalPath);
             File.Move(tempPath, finalPath);
             return Task.FromResult(finalPath);
+        }
+
+        public Task<bool> CheckHealthAsync()
+        {
+            try
+            {
+                var tempPath = Path.Combine(_baseTemp, "healthcheck.tmp");
+                File.WriteAllText(tempPath, "ok");
+                File.Delete(tempPath);
+                return Task.FromResult(true);
+            }
+            catch
+            {
+                return Task.FromResult(false);
+            }
         }
     }
 }

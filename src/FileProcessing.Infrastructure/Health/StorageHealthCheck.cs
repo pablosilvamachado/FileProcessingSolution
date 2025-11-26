@@ -1,37 +1,31 @@
-﻿using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Microsoft.Extensions.Configuration;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
+﻿using FileProcessing.Application.Interfaces;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 
-namespace FileProcessing.Infrastructure.Health
+namespace FileProcessing.Infrastructure.Health;
+
+public class StorageHealthCheck : IHealthCheck
 {
-    public class StorageHealthCheck : IHealthCheck
+    private readonly IFileStorageService _storage;
+
+    public StorageHealthCheck(IFileStorageService storage)
     {
-        private readonly string _basePath;
-        public StorageHealthCheck(IConfiguration configuration)
+        _storage = storage;
+    }
+
+    public async Task<HealthCheckResult> CheckHealthAsync(
+        HealthCheckContext context,
+        CancellationToken cancellationToken = default)
+    {
+        try
         {
-            // procure a configuração real (ex: FileStorage:RootTempPath)
-            _basePath = configuration.GetValue<string>("FileStorage:RootTempPath") ?? "/app/uploads";
+            var ok = await _storage.CheckHealthAsync();
+            return ok
+                ? HealthCheckResult.Healthy("Storage OK")
+                : HealthCheckResult.Unhealthy("Storage failed");
         }
-
-        public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+        catch (Exception ex)
         {
-            try
-            {
-                if (!Directory.Exists(_basePath))
-                    return Task.FromResult(HealthCheckResult.Unhealthy($"Path {_basePath} does not exist"));
-
-                var testFile = Path.Combine(_basePath, "hc_test.tmp");
-                File.WriteAllText(testFile, "ok");
-                File.Delete(testFile);
-
-                return Task.FromResult(HealthCheckResult.Healthy("Storage OK"));
-            }
-            catch (System.Exception ex)
-            {
-                return Task.FromResult(HealthCheckResult.Unhealthy("Storage check failed", ex));
-            }
+            return HealthCheckResult.Unhealthy("Storage exception", ex);
         }
     }
 }

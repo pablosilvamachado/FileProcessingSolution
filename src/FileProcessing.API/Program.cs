@@ -169,4 +169,16 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
     Predicate = check => check.Name != "rabbitmq"
 });
 
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = _ => false 
+});
+
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = check => true
+});
+
+app.MapHealthChecks("/health");
+
 app.Run();

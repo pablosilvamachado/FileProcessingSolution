@@ -29,7 +29,7 @@ public class FileUploadedConsumer : IConsumer<FileUploadedMessage>
         _retryPolicy = Policy
             .Handle<Exception>()
             .WaitAndRetryAsync(
-                new[] { TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10) },
+                new[] { TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(20) },
                 (exception, time, retryCount, context) =>
                 {
                     Log.Warning(exception,
@@ -54,60 +54,48 @@ public class FileUploadedConsumer : IConsumer<FileUploadedMessage>
             ["Consumer"] = nameof(FileUploadedConsumer)
         }))
         {
-            _logger.LogInformation("Received message for file processing");
+            _logger.LogInformation($"Received message. ID {fileId}");
 
-            
             if (await _processedRepo.HasProcessedAsync(fileId))
-            {
-                _logger.LogInformation("Skipping. File {FileId} already processed previously.", fileId);
                 return;
-            }
-
-            var locked = await _repo.TryMarkProcessingAsync(fileId);
-            if (!locked)
-            {
-                _logger.LogWarning("File {FileId} already being processed by another worker — skipping.", fileId);
+            
+            if (!await _repo.TryMarkProcessingAsync(fileId))
                 return;
-            }
 
             try
             {
-                await _retryPolicy.ExecuteAsync(async () =>
-                {
-                    _logger.LogInformation(
-                        "Starting file processing. TempPath={TempPath}, Attempting download...",
-                        msg.File.TempPath);
-          
-                    using var stream = await _storage.DownloadTempAsync(msg.File.TempPath);
 
-                    _logger.LogInformation("Download OK. Moving file to final storage...");
+                using var stream = await _storage.DownloadTempAsync(msg.File.TempPath);
+                _logger.LogInformation($"Reading File in Temp Path: {fileId}");
 
-                    var finalPath = await _storage.MoveTempToFinalAsync(msg.File.TempPath, fileId.ToString());
-                    _logger.LogInformation("File moved to final path: {FinalPath}", finalPath);
-
-                    var entity = await _repo.GetAsync(fileId);
-                    if (entity == null)
-                    {
-                        throw new InvalidOperationException($"Metadata not found for FileId={fileId}");
-                    }
-
-                    entity.MarkCompleted(finalPath);
-                    await _repo.UpdateAsync(entity);
-
-                    _logger.LogInformation("Database updated successfully for FileId={FileId}", fileId);
-                });
+                var finalPath = await _storage.MoveTempToFinalAsync(
+                    msg.File.TempPath,
+                    fileId.ToString()
+                ) ;
                 
-                await _processedRepo.MarkProcessedAsync(fileId, messageType);
+                var entity = await _repo.GetAsync(fileId)
+                    ?? throw new InvalidOperationException($"Metadata not found for {fileId}");
 
-                _logger.LogInformation("File {FileId} processed successfully", fileId);
+                entity.MarkCompleted(finalPath);
+                _logger.LogInformation($"Moving File to Final Path: {fileId}");
+
+                await _repo.UpdateAsync(entity);
+                _logger.LogInformation($"Updating DataBase Registry: {fileId}");
+
+                await _processedRepo.MarkProcessedAsync(fileId, nameof(FileUploadedMessage));
+                _logger.LogInformation($"File Processed: {fileId}");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing file {FileId}. Applying failure state.", fileId);
+                if (ex.InnerException.Message.Contains("Metadata not found for"))
+                    _logger.LogError($"Metadata not found for {fileId}");
+
+                _logger.LogError(ex, "Error on processing file {FileId}", fileId);
 
                 var entity = await _repo.GetAsync(fileId);
                 if (entity != null)
                 {
+                    _logger.LogError($"Retry Process for {fileId}");
                     entity.IncrementRetry();
                     entity.MarkFailed(ex.Message);
                     await _repo.UpdateAsync(entity);
@@ -118,3 +106,4 @@ public class FileUploadedConsumer : IConsumer<FileUploadedMessage>
         }
     }
 }
+

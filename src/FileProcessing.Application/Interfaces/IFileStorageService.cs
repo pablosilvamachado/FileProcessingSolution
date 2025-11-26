@@ -10,5 +10,6 @@ namespace FileProcessing.Application.Interfaces
         Task<Stream> DownloadTempAsync(string path, CancellationToken cancellationToken = default);
         Task<string> MoveTempToFinalAsync(string tempPath, string finalFileName, CancellationToken cancellationToken = default);
         Task DeleteTempAsync(string tempPath, CancellationToken cancellationToken = default);
+        Task<bool> CheckHealthAsync();
     }
 }

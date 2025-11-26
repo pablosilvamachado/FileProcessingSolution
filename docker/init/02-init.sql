@@ -38,3 +38,10 @@ CREATE INDEX IF NOT EXISTS idx_files_status ON "Files" ("Status");
 CREATE INDEX IF NOT EXISTS idx_files_createdat ON "Files" ("CreatedAt");
 
 
+CREATE TABLE IF NOT EXISTS "ProcessedMessages" (
+    "MessageId" UUID PRIMARY KEY,
+    "MessageType" VARCHAR(200) NOT NULL,
+    "ReceivedAt" TIMESTAMP WITH TIME ZONE NULL
+);
+
+
