@@ -30,14 +30,15 @@ namespace FileProcessing.Infrastructure.Repositories
             var rows = await _db.Database.ExecuteSqlInterpolatedAsync($@"
                 UPDATE ""Files"" SET ""Status"" = {"Processing"} 
                 WHERE ""Id"" = {id} AND ""Status"" = {"Pending"}
-            ", cancellationToken);
+                 ", cancellationToken);
+
             return rows > 0;
         }
 
         public async Task UpdateAsync(FileRecord file, CancellationToken cancellationToken = default)
         {
             _db.Files.Update(file);
-            await _db.SaveChangesAsync(cancellationToken);
+            await _db.SaveChangesAsync();
         }
     }
 }

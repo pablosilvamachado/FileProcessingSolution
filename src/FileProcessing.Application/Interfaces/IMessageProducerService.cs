@@ -1,10 +1,9 @@
-﻿using System.Threading;
-using System.Threading.Tasks;
+﻿using FileProcessing.Contracts.Messaging;
 
 namespace FileProcessing.Application.Interfaces
 {
     public interface IMessageProducerService
     {
-        Task PublishFileUploadedAsync(object message, CancellationToken cancellationToken = default);
+        Task PublishFileUploadedAsync(FileUploadedMessage message, CancellationToken cancellationToken = default);
     }
 }

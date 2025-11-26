@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <ProjectReference Include="..\FileProcessing.Contracts\FileProcessing.Contracts.csproj" />
     <ProjectReference Include="..\FileProcessing.Domain\FileProcessing.Domain.csproj" />
   </ItemGroup>
 

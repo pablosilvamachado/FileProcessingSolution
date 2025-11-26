@@ -28,11 +28,13 @@ CREATE TABLE IF NOT EXISTS "Files" (
     "TempPath" TEXT NOT NULL,
     "FinalPath" TEXT NULL,
     "Status" VARCHAR(50) NOT NULL DEFAULT 'Pending',
-    "CreatedAt" TIMESTAMP WITHOUT TIME ZONE NOT NULL,
-    "ProcessedAt" TIMESTAMP WITHOUT TIME ZONE NULL,
+    "CreatedAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+    "ProcessedAt" TIMESTAMP WITH TIME ZONE NULL,
     "ErrorMessage" TEXT NULL,
     "RetryCount" INT NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_files_status ON "Files" ("Status");
 CREATE INDEX IF NOT EXISTS idx_files_createdat ON "Files" ("CreatedAt");
+
+

@@ -1,6 +1,7 @@
 ﻿FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
+COPY FileProcessing.Contracts/FileProcessing.Contracts.csproj FileProcessing.Contracts/
 COPY FileProcessing.Domain/FileProcessing.Domain.csproj FileProcessing.Domain/
 COPY FileProcessing.Application/FileProcessing.Application.csproj FileProcessing.Application/
 COPY FileProcessing.Infrastructure/FileProcessing.Infrastructure.csproj FileProcessing.Infrastructure/
@@ -8,6 +9,7 @@ COPY FileProcessing.Worker/FileProcessing.Worker.csproj FileProcessing.Worker/
 
 RUN dotnet restore FileProcessing.Worker/FileProcessing.Worker.csproj
 
+COPY FileProcessing.Contracts/ FileProcessing.Contracts/
 COPY FileProcessing.Domain/ FileProcessing.Domain/
 COPY FileProcessing.Application/ FileProcessing.Application/
 COPY FileProcessing.Infrastructure/ FileProcessing.Infrastructure/

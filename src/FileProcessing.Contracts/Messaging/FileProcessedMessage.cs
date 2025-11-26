@@ -1,12 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace FileProcessing.Contracts.Messaging
+﻿namespace FileProcessing.Contracts.Messaging
 {
-    internal class FileProcessedMessage
-    {
-    }
+    public record FileProcessedMessage(Guid MessageId, string MessageType, DateTime CreatedAt, Guid CorrelationId, Guid FileId, string Status, object? Result);
 }

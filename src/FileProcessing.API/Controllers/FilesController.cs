@@ -6,6 +6,7 @@ using FileProcessing.Api.DTOs;
 using FileProcessing.Domain.Entities;
 using FileProcessing.Infrastructure.Messaging;
 using Serilog;
+using FileProcessing.Contracts.Messaging;
 
 namespace FileProcessing.Api.Controllers;
 
@@ -30,7 +31,8 @@ public class FilesController : ControllerBase
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> Upload([FromForm] IFormFile file)
     {
-        if (file == null) return BadRequest("file missing");
+        if (file == null)
+            return BadRequest("file missing");
 
         var maxSize = 50 * 1024 * 1024; // 50MB
         if (file.Length > maxSize)
@@ -45,13 +47,19 @@ public class FilesController : ControllerBase
         var entity = new FileRecord(fileId, file.FileName, file.ContentType, file.Length, tempPath);
         await _repo.AddAsync(entity);
 
-        var msg = new FileUploadedMessage(Guid.NewGuid(), "FileUploaded.v1", DateTime.UtcNow, Guid.NewGuid(),
-            new FileInfoDto(fileId, file.FileName, file.ContentType, file.Length, tempPath),
-            new MetaDto(User?.Identity?.Name ?? "anonymous", 0));
+        var msg = new FileUploadedMessage
+        {
+            File = new FileUploadedPayload
+            {
+                FileId = fileId,
+                TempPath = tempPath
+            }
+        };
 
-        Log.Information("Publicando a mensagem na fila " + msg);
         await _producer.PublishFileUploadedAsync(msg);
-        Log.Information("Publicado a mensagem na fila...");
+
+        Log.Information("Mensagem publicada com sucesso.");
+
         return Accepted(new FileUploadedResponse(fileId));
     }
 

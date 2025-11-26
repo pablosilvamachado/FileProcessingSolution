@@ -2,46 +2,61 @@
 using FileProcessing.API.Configurations;
 using FileProcessing.API.Services;
 using FileProcessing.Application.Interfaces;
+using FileProcessing.Infrastructure.Health;
 using FileProcessing.Infrastructure.Persistence;
 using FileProcessing.Infrastructure.Repositories;
 using FileProcessing.Infrastructure.Storage;
 using MassTransit;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using System.Text;
 
+
+
 var builder = WebApplication.CreateBuilder(args);
 
 // ---------------------------
-// Serilog
+// Serilog - Logs estruturados
 // ---------------------------
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
     .Enrich.FromLogContext()
+    .Enrich.WithProperty("Application", "FileProcessingAPI")
     .CreateLogger();
 
 builder.Host.UseSerilog();
 
 // ---------------------------
-// Database (Postgres via Docker)
+// Services
 // ---------------------------
+builder.Services.AddControllers();
+builder.Services.AddHttpContextAccessor();
+
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerWithJwt(); 
+
+
 builder.Services.AddDbContext<FileProcessingDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"),
-        npgsql => npgsql.MigrationsAssembly("FileProcessing.Infrastructure")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.AddScoped<IFileRecordRepository, FileRecordRepository>();
+builder.Services.AddScoped<IProcessedMessageRepository, ProcessedMessageRepository>();
 builder.Services.AddSingleton<IFileStorageService, LocalFileStorageService>();
 builder.Services.AddScoped<IMessageProducerService, MessageProducerService>();
 
 // ---------------------------
-// MassTransit (RabbitMQ Producer)
+// MassTransit - RabbitMQ
 // ---------------------------
 var rabbit = builder.Configuration.GetSection("RabbitMQ");
 
 builder.Services.AddMassTransit(x =>
 {
+    x.SetKebabCaseEndpointNameFormatter();
+
     x.UsingRabbitMq((context, cfg) =>
     {
         cfg.Host(rabbit["Host"], "/", h =>
@@ -49,20 +64,21 @@ builder.Services.AddMassTransit(x =>
             h.Username(rabbit["Username"]);
             h.Password(rabbit["Password"]);
         });
+
+        cfg.PrefetchCount = 16;
     });
 });
 
 builder.Services.AddMassTransitHostedService();
 
 // ---------------------------
-// JWT Authentication
+// JWT - POC
 // ---------------------------
 builder.Services.Configure<TokenOptions>(builder.Configuration.GetSection("Jwt"));
 var tokenOptions = builder.Configuration.GetSection("Jwt").Get<TokenOptions>();
+var key = Encoding.UTF8.GetBytes(tokenOptions.Key);
 
 builder.Services.AddSingleton<ITokenService, TokenService>();
-
-var key = Encoding.UTF8.GetBytes(tokenOptions.Key);
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -73,25 +89,16 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         {
             ValidateIssuer = true,
             ValidIssuer = tokenOptions.Issuer,
-
             ValidateAudience = true,
             ValidAudience = tokenOptions.Audience,
-
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(key),
-
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromSeconds(30)
         };
     });
 
-// ---------------------------
-// Authorization
-// ---------------------------
-builder.Services.AddAuthorization(options =>
-{
-    options.AddPolicy("MustBeUser", policy => policy.RequireRole("User"));
-});
+builder.Services.AddAuthorization();
 
 // ---------------------------
 // HealthChecks
@@ -100,7 +107,8 @@ builder.Services.AddHealthChecks()
     .AddNpgSql(builder.Configuration.GetConnectionString("DefaultConnection")!, name: "postgres")
     .AddRabbitMQ(
         $"amqp://{rabbit["Username"]}:{rabbit["Password"]}@{rabbit["Host"]}:{rabbit["Port"]}/",
-        name: "rabbitmq");
+        name: "rabbitmq")
+    .AddCheck<StorageHealthCheck>("storage");
 
 // ---------------------------
 // CORS
@@ -112,23 +120,18 @@ builder.Services.AddCors(options =>
 });
 
 // ---------------------------
-// Controllers + Swagger
-// ---------------------------
-builder.Services.AddControllers();
-builder.Services.AddSwaggerWithJwt();
-
-// ---------------------------
-// Build
+// Build app
 // ---------------------------
 var app = builder.Build();
 
+//---------------------------
+// Automatic migrations
+// ---------------------------
 try
 {
-    using (var scope = app.Services.CreateScope())
-    {
-        var db = scope.ServiceProvider.GetRequiredService<FileProcessingDbContext>();
-        db.Database.Migrate();
-    }
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<FileProcessingDbContext>();
+    db.Database.Migrate();
 }
 catch (Exception ex)
 {
@@ -146,10 +149,24 @@ if (app.Environment.IsDevelopment())
 app.UseRouting();
 app.UseCors("AllowAll");
 
+app.Use(async (context, next) =>
+{
+    using (Serilog.Context.LogContext.PushProperty("CorrelationId", context.TraceIdentifier))
+    {
+        await next();
+    }
+});
+
 app.UseAuthentication();
 app.UseAuthorization();
 
+// ---------------------------
+// Controllers + Health
+// ---------------------------
 app.MapControllers();
-app.MapHealthChecks("/health");
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Name != "rabbitmq"
+});
 
 app.Run();

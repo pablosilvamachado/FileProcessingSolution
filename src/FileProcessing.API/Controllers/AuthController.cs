@@ -28,9 +28,10 @@ public class AuthController : ControllerBase
                 new Claim(ClaimTypes.NameIdentifier, req.Username),
                 new Claim(ClaimTypes.Role, "User")
             };
-            Log.Information("Login Realizado por : " + req.Username );
+            Log.Information($"Login Realizado por : {req.Username}" );
+
             var token = _tokenService.GenerateToken(req.Username, claims);
-            return Ok(new { access_token = token, token_type = "Bearer" });
+            return Ok(new { access_token = $"Bearer {token}", token_type = "Bearer" });
         }
 
         return Unauthorized();

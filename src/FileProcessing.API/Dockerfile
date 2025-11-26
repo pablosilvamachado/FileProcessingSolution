@@ -2,6 +2,7 @@
 WORKDIR /src
 
 # Copy only required csproj files
+COPY FileProcessing.Contracts/FileProcessing.Contracts.csproj FileProcessing.Contracts/
 COPY FileProcessing.Domain/FileProcessing.Domain.csproj FileProcessing.Domain/
 COPY FileProcessing.Application/FileProcessing.Application.csproj FileProcessing.Application/
 COPY FileProcessing.Infrastructure/FileProcessing.Infrastructure.csproj FileProcessing.Infrastructure/
@@ -10,6 +11,7 @@ COPY FileProcessing.API/FileProcessing.API.csproj FileProcessing.API/
 RUN dotnet restore FileProcessing.API/FileProcessing.API.csproj
 
 # Copy only the project directories (not the entire src)
+COPY FileProcessing.Contracts/ FileProcessing.Contracts/
 COPY FileProcessing.Domain/ FileProcessing.Domain/
 COPY FileProcessing.Application/ FileProcessing.Application/
 COPY FileProcessing.Infrastructure/ FileProcessing.Infrastructure/

@@ -1,12 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace FileProcessing.Contracts.Messaging
+﻿namespace FileProcessing.Contracts.Messaging
 {
-    internal class FileInfoDto
-    {
-    }
+    public record FileInfoDto(Guid FileId, string FileName, string ContentType, long Size, string TempPath);    
 }

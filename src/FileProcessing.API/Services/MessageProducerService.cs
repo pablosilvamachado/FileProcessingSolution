@@ -1,20 +1,20 @@
-﻿using System.Threading;
-using System.Threading.Tasks;
-using MassTransit;
+﻿using MassTransit;
 using FileProcessing.Application.Interfaces;
-using FileProcessing.Infrastructure.Messaging;
+using FileProcessing.Contracts.Messaging;
+
 
 namespace FileProcessing.Api.Services
 {
     public class MessageProducerService : IMessageProducerService
     {
-        private readonly IPublishEndpoint _publish;
-        public MessageProducerService(IPublishEndpoint publish) => _publish = publish;
+        private readonly ISendEndpointProvider _send;
 
-        public async Task PublishFileUploadedAsync(object message, CancellationToken cancellationToken = default)
+        public MessageProducerService(ISendEndpointProvider send) => _send = send;
+
+        public async Task PublishFileUploadedAsync(FileUploadedMessage message, CancellationToken cancellationToken = default)
         {
-            // Publish using MassTransit
-            await _publish.Publish(message, cancellationToken);
+            var endpoint = await _send.GetSendEndpoint(new Uri("queue:upload_queue"));
+            await endpoint.Send(message, cancellationToken);
         }
     }
 }

@@ -6,79 +6,65 @@ using FileProcessing.Worker.Consumers;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
+using Serilog.Context;
 
-var builder = Host.CreateApplicationBuilder(args);
-
-Log.Logger = new LoggerConfiguration()
-    .Enrich.FromLogContext()
-    .WriteTo.Console()
-    .WriteTo.File("logs/worker-.log", rollingInterval: RollingInterval.Day)
-    .WriteTo.Seq(builder.Configuration["Seq:Url"] ?? "http://seq:5341")
-    .CreateLogger();
-
-builder.Services.AddDbContext<FileProcessingDbContext>(opts =>
-    opts.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
-
-
-builder.Services.AddScoped<IFileRecordRepository, FileRecordRepository>();
-builder.Services.AddSingleton<IFileStorageService, LocalFileStorageService>();
-
-builder.Services.AddMassTransit(x =>
+try
 {
-    x.AddConsumer<FileUploadedConsumer>();
+    Log.Logger = new LoggerConfiguration()
+        .ReadFrom.Configuration(new ConfigurationBuilder().AddJsonFile("appsettings.json").Build())
+        .Enrich.FromLogContext()
+        .Enrich.WithProperty("Application", "FileProcessingWorker")
+        .CreateLogger();
 
-    x.UsingRabbitMq((context, cfg) =>
-    {
-        cfg.Host(builder.Configuration["RabbitMQ:Host"], "/", h =>
+    Log.Information("Starting Worker...");
+
+    var host = Host.CreateDefaultBuilder(args)
+        .UseSerilog()
+        .ConfigureServices((context, services) =>
         {
-            h.Username(builder.Configuration["RabbitMQ:Username"] ?? "guest");
-            h.Password(builder.Configuration["RabbitMQ:Password"] ?? "guest");
-        });
+            // Database
+            services.AddDbContext<FileProcessingDbContext>(options =>
+                options.UseNpgsql(context.Configuration.GetConnectionString("DefaultConnection")));
 
-        cfg.ReceiveEndpoint("upload_queue", e =>
-        {
-            e.ConfigureConsumeTopology = false;
+            // Repositórios e serviços
+            services.AddScoped<IFileRecordRepository, FileRecordRepository>();
+            services.AddScoped<IProcessedMessageRepository, ProcessedMessageRepository>();
+            services.AddSingleton<IFileStorageService, LocalFileStorageService>();
 
-            e.Bind("upload_exchange", s =>
+            // MassTransit
+            var rabbit = context.Configuration.GetSection("RabbitMQ");
+            services.AddMassTransit(x =>
             {
-                s.RoutingKey = "file_uploaded";
-                s.ExchangeType = "direct";
+                x.AddConsumer<FileUploadedConsumer>();
+                x.UsingRabbitMq((ctx, cfg) =>
+                {
+                    cfg.Host(rabbit["Host"], "/", h =>
+                    {
+                        h.Username(rabbit["Username"]);
+                        h.Password(rabbit["Password"]);
+                    });
+
+                    cfg.ReceiveEndpoint("upload_queue", e =>
+                    {
+                        e.ConfigureConsumer<FileUploadedConsumer>(ctx);
+                        e.PrefetchCount = 16;
+                        e.UseMessageRetry(r => r.Interval(3, TimeSpan.FromSeconds(5)));
+                        e.DiscardFaultedMessages();
+                    });
+                });
             });
 
-            e.SetQueueArgument("x-dead-letter-exchange", "upload_exchange_dlq");
-            e.SetQueueArgument("x-dead-letter-routing-key", "file_uploaded_dlq");
+            services.AddMassTransitHostedService();
+        })
+        .Build();
 
-            e.UseMessageRetry(r => r.Exponential(5, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(2)));
-
-            e.ConfigureConsumer<FileUploadedConsumer>(context);
-        });
-
-        cfg.ReceiveEndpoint("upload_queue_retry", e =>
-        {
-            e.ConfigureConsumeTopology = false;
-
-            e.Bind("upload_exchange_retry", s => {
-                s.RoutingKey = "file_uploaded_retry";
-                s.ExchangeType = "direct";
-            });
-
-            e.SetQueueArgument("x-message-ttl", 30000);
-            e.SetQueueArgument("x-dead-letter-exchange", "upload_exchange");
-            e.SetQueueArgument("x-dead-letter-routing-key", "file_uploaded");
-        });
-
-        cfg.ReceiveEndpoint("upload_queue_dlq", e =>
-        {
-            e.ConfigureConsumeTopology = false;
-
-            e.Bind("upload_exchange_dlq", s => {
-                s.RoutingKey = "file_uploaded_dlq";
-                s.ExchangeType = "direct";
-            });
-        });
-    });
-});
-
-
-var app = builder.Build();
-await app.RunAsync();
+    await host.RunAsync();
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "Worker crashed");
+}
+finally
+{
+    Log.CloseAndFlush();
+}

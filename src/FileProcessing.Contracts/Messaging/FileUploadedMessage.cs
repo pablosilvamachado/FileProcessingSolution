@@ -1,12 +1,16 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace FileProcessing.Contracts.Messaging
+﻿namespace FileProcessing.Contracts.Messaging
 {
-    internal class FileUploadedMessage
+    public class FileUploadedMessage
     {
+        public FileUploadedPayload File { get; set; } = default!;
     }
+
+    public class FileUploadedPayload
+    {
+        public Guid FileId { get; set; }
+        public string TempPath { get; set; } = default!;
+
+        public string MesageType { get; set; } = string .Empty;
+    }
+
 }

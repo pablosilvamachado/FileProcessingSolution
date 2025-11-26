@@ -1,0 +1,6 @@
+
+CREATE TABLE IF NOT EXISTS "ProcessedMessages" (
+    "MessageId" UUID PRIMARY KEY,
+    "MessageType" VARCHAR(200) NOT NULL,
+    "ReceivedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
