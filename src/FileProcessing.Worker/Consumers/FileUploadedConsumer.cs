@@ -54,7 +54,7 @@ public class FileUploadedConsumer : IConsumer<FileUploadedMessage>
             ["Consumer"] = nameof(FileUploadedConsumer)
         }))
         {
-            _logger.LogInformation($"Received message. ID {fileId}");
+            _logger.LogInformation($"Consumer - Received message. ID {fileId}");
 
             if (await _processedRepo.HasProcessedAsync(fileId))
                 return;
@@ -66,7 +66,7 @@ public class FileUploadedConsumer : IConsumer<FileUploadedMessage>
             {
 
                 using var stream = await _storage.DownloadTempAsync(msg.File.TempPath);
-                _logger.LogInformation($"Reading File in Temp Path: {fileId}");
+                _logger.LogInformation($"Consumer - Reading File in Temp Path: {fileId}");
 
                 var finalPath = await _storage.MoveTempToFinalAsync(
                     msg.File.TempPath,
@@ -77,25 +77,25 @@ public class FileUploadedConsumer : IConsumer<FileUploadedMessage>
                     ?? throw new InvalidOperationException($"Metadata not found for {fileId}");
 
                 entity.MarkCompleted(finalPath);
-                _logger.LogInformation($"Moving File to Final Path: {fileId}");
+                _logger.LogInformation($"Consumer - Moving File to Final Path: {fileId}");
 
                 await _repo.UpdateAsync(entity);
-                _logger.LogInformation($"Updating DataBase Registry: {fileId}");
+                _logger.LogInformation($"Consumer - Updating DataBase Registry: {fileId}");
 
                 await _processedRepo.MarkProcessedAsync(fileId, nameof(FileUploadedMessage));
-                _logger.LogInformation($"File Processed: {fileId}");
+                _logger.LogInformation($"Consumer - File Processed: {fileId}");
             }
             catch (Exception ex)
             {
                 if (ex.InnerException.Message.Contains("Metadata not found for"))
-                    _logger.LogError($"Metadata not found for {fileId}");
+                    _logger.LogError($"Consumer - Metadata not found for {fileId}");
 
                 _logger.LogError(ex, "Error on processing file {FileId}", fileId);
 
                 var entity = await _repo.GetAsync(fileId);
                 if (entity != null)
                 {
-                    _logger.LogError($"Retry Process for {fileId}");
+                    _logger.LogError($"Consumer - Retry Process for {fileId}");
                     entity.IncrementRetry();
                     entity.MarkFailed(ex.Message);
                     await _repo.UpdateAsync(entity);

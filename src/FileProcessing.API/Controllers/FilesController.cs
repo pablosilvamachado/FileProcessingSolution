@@ -58,7 +58,7 @@ public class FilesController : ControllerBase
 
         await _producer.PublishFileUploadedAsync(msg);
 
-        Log.Information($"Mensagem publicada com sucesso. Mensagem ID: {fileId}");
+        Log.Information($"Publisher - Mensagem publicada com sucesso. Mensagem ID: {fileId}");
 
         return Accepted(new FileUploadedResponse(fileId));
     }
